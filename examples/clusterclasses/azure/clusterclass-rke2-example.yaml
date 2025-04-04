@@ -78,12 +78,18 @@ spec:
           default: "cluster-identity"
     - name: imageGallery
       required: true
+      metadata: 
+        labels:
+          turtles-capi.cattle.io/group: 'Image'
       schema:
         openAPIV3Schema:
           description: "The image Public gallery name."
           type: string
           default: "ClusterAPI-f72ceb4f-5159-4c26-a0fe-2ea738f0d019"
     - name: imageName
+      metadata: 
+        labels:
+          turtles-capi.cattle.io/group: 'Image'
       required: true
       schema:
         openAPIV3Schema:
@@ -91,6 +97,9 @@ spec:
           type: string
           default: "capi-ubun2-2404"          
     - name: imageVersion
+      metadata: 
+        labels:
+          turtles-capi.cattle.io/group: 'Image'
       required: true
       schema:
         openAPIV3Schema:
