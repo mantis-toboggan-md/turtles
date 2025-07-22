@@ -1,0 +1,317 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: demo-0-azure-rke2-example
+spec:
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      kind: RKE2ControlPlaneTemplate
+      name: demo-0-rke2-control-plane
+    machineInfrastructure:
+      ref:
+        kind: AzureMachineTemplate
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        name: demo-0-rke2-control-plane
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: AzureClusterTemplate
+      name: demo-0-azure-cluster
+  workers:
+    machineDeployments:
+      - class: demo-0-rke2-default-worker
+        template:
+          bootstrap:
+            ref:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              kind: RKE2ConfigTemplate
+              name: demo-0-rke2-default-worker-bootstrap
+          infrastructure:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+              kind: AzureMachineTemplate
+              name: demo-0-rke2-default-worker
+  variables:
+    - name: location
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "General"
+          turtles-capi.cattle.io/group: "Azure"
+      required: true
+      schema:
+        openAPIV3Schema:
+          default: northeurope
+          description: "The Azure location where the Cluster will be created."
+          type: string
+          enum:
+            - australiaeast
+            - francecentral
+            - germanywestcentral
+            - northcentralus
+            - northeurope
+            - switzerlandnorth
+            - uksouth
+            - westeurope
+            - westus2
+    - name: azureClusterIdentity
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "General"
+          turtles-capi.cattle.io/group: "Azure"
+          turtles-capi.cattle.io/type: "infrastructure.cluster.x-k8s.io.azureclusteridentity"
+          turtles-capi.cattle.io/highlight: "warning"
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: "The AzureClusterIdentity is a resource that references credentials used to create the cluster. If the cluster identity has allowedNamespaces defined, the cluster identity may only be those namespaces. If undefined, clusters in any namespace may use the cluster identity" 
+          default:
+            name: "cluster-identity"
+            namespace: "default"
+          properties:
+            name: 
+              type: string
+            namespace: 
+              type: string
+    - name: subscriptionID
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "General"
+          turtles-capi.cattle.io/group: "Azure"
+      required: true
+      schema:
+        openAPIV3Schema:
+          description: "The Azure Subscription ID where the Cluster will be created."
+          type: string
+    - name: resourceGroup
+      metadata:
+          annotations:
+            turtles-capi.cattle.io/section: "General"
+            turtles-capi.cattle.io/group: "Azure"
+      required: true
+      schema:
+        openAPIV3Schema:
+          description: "The Azure Resource Group where the Cluster will be created."
+          type: string
+    - name: imageGallery
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "Workers"
+      required: true
+      schema:
+        openAPIV3Schema:
+          description: "The image Public gallery name."
+          type: string
+          default: "ClusterAPI-f72ceb4f-5159-4c26-a0fe-2ea738f0d019"
+    - name: imageName
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "Workers"
+          turtles-capi.cattle.io/highlight: "warning"
+      required: true
+      schema:
+        openAPIV3Schema:
+          description: "The Azure Public image gallery must contain a version of this image matching the cluster version."
+          type: string
+          default: "capi-ubun2-2404"          
+    - name: vmSize
+      required: true
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "Workers"
+      schema:
+        openAPIV3Schema:
+          description: "The VM size used by machines."
+          type: string
+          default: "Standard_D2s_v3"
+    - name: registrationMethod
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "ControlPlane"
+          turtles-capi.cattle.io/highlight: "info"
+          turtles-capi.cattle.io/docs: "https://caprke2.docs.rancher.com/02_topics/02_node-registration-methods.html"
+      required: true
+      schema:
+        openAPIV3Schema:
+          description: "Registration method to use. Defaults to control-plane endpoint (empty string). Immutable once is set. If using a control plane endpoint served by a load balancer, make sure that it allows traffic to the control plane nodes on the 9345 registration port."
+          type: string
+          default: ""
+          enum:
+            - internal-first
+            - internal-only-ips
+            - external-only-ips
+            - address
+            - control-plane-endpoint
+            - ""
+  patches:
+    - name: azureClusterTemplate
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: AzureClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: add
+              path: "/spec/template/spec/subscriptionID"
+              valueFrom:
+                variable: subscriptionID
+            - op: add
+              path: "/spec/template/spec/location"
+              valueFrom:
+                variable: location
+            - op: add
+              path: "/spec/template/spec/resourceGroup"
+              valueFrom:
+                variable: resourceGroup
+            - op: add
+              path: "/spec/template/spec/identityRef/name"
+              valueFrom:
+                template: "{{ .azureClusterIdentity.name }}"
+                # variable: azureClusterIdentityName
+            - op: add
+              path: "/spec/template/spec/networkSpec"
+              valueFrom:
+                template: |
+                  vnet:
+                    name: {{ .builtin.cluster.name }}
+                  subnets:
+                  - name: {{ .builtin.cluster.name }}-kcps
+                    role: control-plane
+                  - name: {{ .builtin.cluster.name }}-nodes
+                    natGateway:
+                      name: {{ .builtin.cluster.name }}-nodes
+                    role: node
+    - name: azureMachineTemplate
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: RKE2ControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/files/-
+              valueFrom:
+                template: |
+                    contentFrom:
+                      secret:
+                        key: control-plane-azure.json
+                        name: "{{ .builtin.controlPlane.machineTemplate.infrastructureRef.name }}-azure-json"
+                    owner: root:root
+                    path: /etc/kubernetes/azure.json
+                    permissions: "0644"
+            - op: add
+              path: /spec/template/spec/registrationMethod
+              valueFrom:
+                variable: registrationMethod
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: AzureMachineTemplate
+            matchResources:
+              controlPlane: true
+              machineDeploymentClass:
+                names:
+                  - demo-0-rke2-default-worker
+          jsonPatches:
+            - op: add
+              path: "/spec/template/spec/image/computeGallery/gallery"
+              valueFrom:
+                variable: imageGallery
+            - op: add
+              path: "/spec/template/spec/image/computeGallery/name"
+              valueFrom:
+                variable: imageName
+            - op: replace
+              path: /spec/template/spec/image/computeGallery/version
+              valueFrom:
+                template: '{{ trimPrefix "v" (trimSuffix "+rke2r1" .builtin.cluster.topology.version) }}'
+            - op: add
+              path: "/spec/template/spec/vmSize"
+              valueFrom:
+                variable: vmSize
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: RKE2ConfigTemplate
+metadata:
+  name: demo-0-rke2-default-worker-bootstrap
+spec:
+  template:
+    spec: {}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: AzureClusterTemplate
+metadata:
+  name: demo-0-azure-cluster
+spec:
+  template:
+    spec:
+      identityRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: AzureClusterIdentity
+        name: cluster-identity
+      networkSpec:
+        subnets:
+        - name: control-plane-subnet
+          role: control-plane
+        - name: node-subnet
+          role: node
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: RKE2ControlPlaneTemplate
+metadata:
+  name: demo-0-rke2-control-plane
+spec:
+  template:
+    spec:
+      rolloutStrategy:
+        type: "RollingUpdate"
+        rollingUpdate:
+          maxSurge: 1
+      agentConfig: {}
+      serverConfig:
+        cni: none
+        cloudProviderName: external
+        disableComponents:
+          kubernetesComponents:
+          - cloudController
+        kubeAPIServer:
+          extraArgs:
+          - --anonymous-auth=true
+      files:
+        - owner: root:root
+          path: /etc/kubernetes/azure.json
+          permissions: "0644"
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: AzureMachineTemplate
+metadata:
+  name: demo-0-rke2-control-plane
+spec:
+  template:
+    spec:
+      image:
+        computeGallery: 
+          gallery: "TO_BE_REPLACED_BY_PATCH"
+          name: "TO_BE_REPLACED_BY_PATCH"
+          version: "TO_BE_REPLACED_BY_PATCH"
+      osDisk:
+        diskSizeGB: 128
+        osType: Linux
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: AzureMachineTemplate
+metadata:
+  name: demo-0-rke2-default-worker
+spec:
+  template:
+    spec:
+      image:
+        computeGallery: 
+          gallery: "TO_BE_REPLACED_BY_PATCH"
+          name: "TO_BE_REPLACED_BY_PATCH"
+          version: "TO_BE_REPLACED_BY_PATCH"
+      osDisk:
+        diskSizeGB: 30
+        osType: Linux

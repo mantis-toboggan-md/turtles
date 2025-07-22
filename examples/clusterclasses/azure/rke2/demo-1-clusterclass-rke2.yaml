@@ -1,0 +1,618 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: demo-1-azure-rke2-example
+spec:
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      kind: RKE2ControlPlaneTemplate
+      name: demo-1-rke2-control-plane
+    machineInfrastructure:
+      ref:
+        kind: AzureMachineTemplate
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        name: demo-1-rke2-control-plane
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: AzureClusterTemplate
+      name: demo-1-azure-cluster
+  workers:
+    machineDeployments:
+      - class: demo-1-rke2-default-worker
+        template:
+          bootstrap:
+            ref:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              kind: RKE2ConfigTemplate
+              name: demo-1-rke2-default-worker-bootstrap
+          infrastructure:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+              kind: AzureMachineTemplate
+              name: demo-1-rke2-default-worker
+  variables:
+    - name: location
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "General"
+          turtles-capi.cattle.io/group: "Azure"
+      required: true
+      schema:
+        openAPIV3Schema:
+          default: northeurope
+          description: "The Azure location where the Cluster will be created."
+          type: string
+          enum:
+            - australiaeast
+            - francecentral
+            - germanywestcentral
+            - northcentralus
+            - northeurope
+            - switzerlandnorth
+            - uksouth
+            - westeurope
+            - westus2
+    - name: subscriptionID
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "General"
+          turtles-capi.cattle.io/group: "Azure"
+      required: true
+      schema:
+        openAPIV3Schema:
+          description: "The Azure Subscription ID where the Cluster will be created."
+          type: string
+    - name: resourceGroup
+      metadata:
+          annotations:
+            turtles-capi.cattle.io/section: "General"
+            turtles-capi.cattle.io/group: "Azure"
+      required: true
+      schema:
+        openAPIV3Schema:
+          description: "The Azure Resource Group where the Cluster will be created."
+          type: string
+    - name: azureClusterIdentity
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "General"
+          turtles-capi.cattle.io/group: "Azure"
+          turtles-capi.cattle.io/type: "infrastructure.cluster.x-k8s.io.azureclusteridentity"
+          turtles-capi.cattle.io/highlight: "warning"
+          turtles-capi.cattle.io/docs: "https://capz.sigs.k8s.io/topics/identities#service-principal"
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: "The AzureClusterIdentity is a resource that references credentials used to create the cluster. If the cluster identity has allowedNamespaces defined, the cluster identity may only be those namespaces. If undefined, clusters in any namespace may use the cluster identity" 
+          default:
+            name: "cluster-identity"
+            namespace: "default"
+          properties:
+            name: 
+              type: string
+            namespace: 
+              type: string   
+    - name: imageName
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "Workers"
+          turtles-capi.cattle.io/highlight: "warning"
+      required: true
+      schema:
+        openAPIV3Schema:
+          description: "The Azure Public image gallery must contain a version of this image matching the cluster version."
+          type: string
+          default: "capi-ubun2-2404"  
+    - name: imageGallery
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "Workers"
+      required: true
+      schema:
+        openAPIV3Schema:
+          description: "The image Public gallery name."
+          type: string
+          default: "ClusterAPI-f72ceb4f-5159-4c26-a0fe-2ea738f0d019"
+        
+    - name: vmSize
+      required: true
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "Workers"
+          turtles-capi.cattle.io/highlight: "info"
+          turtles-capi.cattle.io/docs: "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/overview#general-purpose"
+      required: true
+      schema:
+        openAPIV3Schema:
+          description: "The VM size used by machines. The default size is a general purpose machine with 2 vcpu and 8 GB RAM."
+          type: string
+          default: "Standard_D2s_v3"
+    - name: registrationMethod
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "ControlPlane"
+          turtles-capi.cattle.io/highlight: "info"
+          turtles-capi.cattle.io/docs: "https://caprke2.docs.rancher.com/02_topics/02_node-registration-methods.html"
+      required: true
+      schema:
+        openAPIV3Schema:
+          description: "Registration method to use. Defaults to control-plane endpoint (empty string). Immutable once is set. If using a control plane endpoint served by a load balancer, make sure that it allows traffic to the control plane nodes on the 9345 registration port."
+          type: string
+          default: ""
+          enum:
+            - internal-first
+            - internal-only-ips
+            - external-only-ips
+            - address
+            - control-plane-endpoint
+            - ""
+
+  # rke2 
+    ## rke2 control plane 
+    ### rke2controlplane.serverConfig.etcd
+    - name: toggleEtcdBackup
+      metadata:
+        annotations: 
+          turtles-capi.cattle.io/section: 'controlplane'
+          turtles-capi.cattle.io/group: 'ETCD Backup'
+          turtles-capi.cattle.io/highlight: 'info'
+          turtles-capi.cattle.io/label: 'Enable Automatic ETCD Backup'
+          turtles-capi.cattle.io/docs: "https://docs.rke2.io/datastore/backup_restore"
+      schema:
+        openAPIV3Schema:
+          description: 'In RKE2, snapshots are stored on each etcd node. If you have multiple etcd or etcd + control-plane nodes, you will have multiple copies of local etcd snapshots.'
+          type: boolean
+          default: true
+    - name: etcdBackupscheduleChron
+      metadata:
+        annotations: 
+          turtles-capi.cattle.io/section: 'controlplane'
+          turtles-capi.cattle.io/group: 'ETCD Backup'
+          turtles-capi.cattle.io/toggled-by: 'toggleEtcdBackup'
+      schema:
+        openAPIV3Schema:
+          description: |
+            Snapshot interval time in cron spec. eg. every 5 hours '* */5 * * *'
+          type: string
+          default: '0 */12 * * *'
+    - name: etcdBackupretention
+      metadata:
+        annotations: 
+          turtles-capi.cattle.io/section: 'controlplane'
+          turtles-capi.cattle.io/group: 'ETCD Backup'
+          turtles-capi.cattle.io/toggled-by: 'toggleEtcdBackup'
+      schema:
+        openAPIV3Schema:
+          description: 'Number of snapshots to retain'
+          type: string
+          default: '5'
+    - name: etcdBackupsnapshotName
+      metadata:
+        annotations: 
+          turtles-capi.cattle.io/section: 'controlplane'
+          turtles-capi.cattle.io/group: 'ETCD Backup'
+          turtles-capi.cattle.io/toggled-by: 'toggleEtcdBackup'
+      schema:
+        openAPIV3Schema:
+          description: |
+            Set the base name of etcd snapshots.
+          type: string
+          default: 'etcd-snapshot'
+          minLength: 5
+    - name: etcdBackupdirectory
+      metadata:
+        annotations: 
+          turtles-capi.cattle.io/section: 'controlplane'
+          turtles-capi.cattle.io/group: 'ETCD Backup'
+          turtles-capi.cattle.io/toggled-by: 'toggleEtcdBackup'
+      schema:
+        openAPIV3Schema:
+          description: 'Directory to save db snapshots. Default location: <data-dir>/db/snapshots'
+          type: string
+          default: ''
+    - name: toggleEtcdS3
+      metadata:
+        annotations: 
+          turtles-capi.cattle.io/section: 'controlplane'
+          turtles-capi.cattle.io/group: 'ETCD Backup'
+          turtles-capi.cattle.io/label: 'Configure S3 data store'
+          turtles-capi.cattle.io/highlight: 'info'
+          turtles-capi.cattle.io/toggled-by: 'toggleEtcdBackup'
+          turtles-capi.cattle.io/docs: "https://docs.rke2.io/datastore/backup_restore#s3-compatible-api-support"
+      schema:
+        openAPIV3Schema:
+          description: 'RKE2 supports writing etcd snapshots to and restoring etcd snapshots from systems with S3-compatible APIs. S3 support is available for both on-demand and scheduled snapshots.'
+          type: boolean
+          default: false
+    - name: ectdS3endpoint
+      metadata:
+        annotations: 
+          turtles-capi.cattle.io/section: 'controlplane'
+          turtles-capi.cattle.io/group: 'ETCD Backup'
+          turtles-capi.cattle.io/toggled-by: 'toggleEtcdBackup,toggleEtcdS3'
+      schema:
+        openAPIV3Schema:
+          description: 'S3 endpoint url'
+          type: string
+          example: 's3.amazonaws.com'
+          default: ''
+    - name: etcdS3enforceSslVerify
+      metadata:
+        annotations: 
+          turtles-capi.cattle.io/section: 'controlplane'
+          turtles-capi.cattle.io/group: 'ETCD Backup'
+          turtles-capi.cattle.io/toggled-by: 'toggleEtcdBackup,toggleEtcdS3'
+      schema:
+        openAPIV3Schema:
+          description: 'Enforce SSL validation '
+          type: boolean
+          default: true
+    - name: etcdS3endpointCASecret
+      metadata:
+        annotations: 
+          turtles-capi.cattle.io/section: 'controlplane'
+          turtles-capi.cattle.io/group: 'ETCD Backup'
+          turtles-capi.cattle.io/toggled-by: 'toggleEtcdBackup,toggleEtcdS3'
+          turtles-capi.cattle.io/type: 'secret'
+      schema:
+        openAPIV3Schema:
+          description: |
+            EndpointCA references the Secret that contains a custom CA that should be trusted to connect to S3 endpoint. The secret must contain a key named 'ca.pem' that contains the CA certificate.
+          type: object
+          default: {}
+          properties:
+            name:
+              type: string
+            namespace:
+              type: string
+    - name: etcdS3s3CredentialSecret
+      metadata:
+        annotations: 
+          turtles-capi.cattle.io/section: 'controlplane'
+          turtles-capi.cattle.io/group: 'ETCD Backup'
+          turtles-capi.cattle.io/toggled-by: 'toggleEtcdBackup,toggleEtcdS3'
+          turtles-capi.cattle.io/type: 'secret'
+      schema:
+        openAPIV3Schema:
+          default: {}
+          description: |
+            S3CredentialSecret is a reference to a Secret containing the Access Key and Secret Key necessary to access the target S3 Bucket. The Secret must contain the following keys: 'aws_access_key_id' and 'aws_secret_access_key'. If empty, the controller will default to IAM authentication
+          type: object
+          properties:
+            name:
+              type: string
+            namespace:
+              type: string
+    - name: etcdS3region
+      metadata:
+        annotations: 
+          turtles-capi.cattle.io/section: 'controlplane'
+          turtles-capi.cattle.io/group: 'ETCD Backup'
+          turtles-capi.cattle.io/toggled-by: 'toggleEtcdBackup,toggleEtcdS3'
+      schema:
+        openAPIV3Schema:
+          default: ''
+          description: 'S3 Region'
+          type: string
+          example: 'us-east-1'
+    - name: etcdS3bucket
+      metadata:
+        annotations: 
+          turtles-capi.cattle.io/section: 'controlplane'
+          turtles-capi.cattle.io/group: 'ETCD Backup'
+          turtles-capi.cattle.io/toggled-by: 'toggleEtcdBackup,toggleEtcdS3'
+      schema:
+        openAPIV3Schema:
+          default: ''
+          type: string
+    - name: etcdS3folder
+      metadata:
+        annotations: 
+          turtles-capi.cattle.io/section: 'controlplane'
+          turtles-capi.cattle.io/group: 'ETCD Backup'
+          turtles-capi.cattle.io/toggled-by: 'toggleEtcdBackup,toggleEtcdS3'
+      schema:
+        openAPIV3Schema:
+          default: ''
+          type: string
+
+    ## rke2 bootstrap
+    ### agent config
+    - name: rkeBootnodeTaints
+      metadata:
+        annotations: 
+          turtles-capi.cattle.io/section: 'workers'
+      schema:
+        openAPIV3Schema:
+          default: 
+          - ''
+          type: array
+          items:
+            type: string
+    - name: rkeBootnodeLabels
+      metadata:
+        annotations: 
+          turtles-capi.cattle.io/section: 'workers'
+      schema:
+        openAPIV3Schema:
+          default: 
+          - ''
+          type: array
+          items:
+            type: string
+    - name: rkeBootnodeAnnotations
+      metadata:
+        annotations: 
+          turtles-capi.cattle.io/section: 'workers'
+          turtles-capi.cattle.io/highlight: 'warning'
+      schema:
+        openAPIV3Schema:
+          default: {}
+          description: 'NodeAnnotations  are annotations that are created on nodes post bootstrap phase. Unfortunately it is not possible to apply annotations via kubelet using current bootstrap configurations. Issue\: https://github.com/kubernetes/kubernetes/issues/108046'
+          type: object
+          additionalProperties:
+            type: string
+
+      
+
+      
+  patches:
+    - name: azureClusterTemplate
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: AzureClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: add
+              path: "/spec/template/spec/subscriptionID"
+              valueFrom:
+                variable: subscriptionID
+            - op: add
+              path: "/spec/template/spec/location"
+              valueFrom:
+                variable: location
+            - op: add
+              path: "/spec/template/spec/resourceGroup"
+              valueFrom:
+                variable: resourceGroup
+            - op: add
+              path: "/spec/template/spec/identityRef/name"
+              valueFrom:
+                template: "{{ .azureClusterIdentity.name }}"
+                # variable: azureClusterIdentityName
+            - op: add
+              path: "/spec/template/spec/networkSpec"
+              valueFrom:
+                template: |
+                  vnet:
+                    name: {{ .builtin.cluster.name }}
+                  subnets:
+                  - name: {{ .builtin.cluster.name }}-kcps
+                    role: control-plane
+                  - name: {{ .builtin.cluster.name }}-nodes
+                    natGateway:
+                      name: {{ .builtin.cluster.name }}-nodes
+                    role: node
+    - name: azureMachineTemplate
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: RKE2ControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/files/-
+              valueFrom:
+                template: |
+                    contentFrom:
+                      secret:
+                        key: control-plane-azure.json
+                        name: "{{ .builtin.controlPlane.machineTemplate.infrastructureRef.name }}-azure-json"
+                    owner: root:root
+                    path: /etc/kubernetes/azure.json
+                    permissions: "0644"
+            - op: add
+              path: /spec/template/spec/registrationMethod
+              valueFrom:
+                variable: registrationMethod
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: AzureMachineTemplate
+            matchResources:
+              controlPlane: true
+              machineDeploymentClass:
+                names:
+                  - demo-1-rke2-default-worker
+          jsonPatches:
+            - op: add
+              path: "/spec/template/spec/image/computeGallery/gallery"
+              valueFrom:
+                variable: imageGallery
+            - op: add
+              path: "/spec/template/spec/image/computeGallery/name"
+              valueFrom:
+                variable: imageName
+            - op: replace
+              path: /spec/template/spec/image/computeGallery/version
+              valueFrom:
+                template: '{{ trimPrefix "v" (trimSuffix "+rke2r1" .builtin.cluster.topology.version) }}'
+            - op: add
+              path: "/spec/template/spec/vmSize"
+              valueFrom:
+                variable: vmSize
+    - name: rke2ConfigTemplate
+      definitions:
+        - selector:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+            kind: RKE2ConfigTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - demo-1-rke2-default-worker
+          jsonPatches:
+            - op: add
+              path: '/spec/template/spec/agentConfig/nodeLabels'
+              valueFrom:
+                variable: rkeBootnodeLabels
+            - op: add
+              path: '/spec/template/spec/agentConfig/nodeAnnotations'
+              valueFrom:
+                variable: rkeBootnodeAnnotations
+            - op: add
+              path: '/spec/template/spec/agentConfig/nodeTaints'
+              valueFrom:
+                variable: rkeBootnodeTaints
+    - name: rke2ControlPlaneTemplateEtcd
+      enabledIf: '{{ .toggleEtcdBackup }}'
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: RKE2ControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: '/spec/template/spec/serverConfig/etcd/backupConfig/scheduleCron'
+              valueFrom:
+                variable: etcdBackupscheduleChron
+            - op: add
+              path: '/spec/template/spec/serverConfig/etcd/backupConfig/retention'
+              valueFrom:
+                variable: etcdBackupretention
+            - op: add
+              path: '/spec/template/spec/serverConfig/etcd/backupConfig/directory'
+              valueFrom:
+                variable: etcdBackupdirectory    
+            - op: add
+              path: '/spec/template/spec/serverConfig/etcd/backupConfig/snapshotName'
+              valueFrom:
+                variable: etcdBackupsnapshotName   
+    - name: rke2ControlPlaneTemplateEtcdS3
+      enabledIf: '{{ and  .toggleEtcdBackup .toggleEtcdS3 }}'
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: RKE2ControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: '/spec/template/spec/serverConfig/etcd/backupConfig/s3/endpoint'
+              valueFrom:
+                variable: ectdS3endpoint
+            - op: add
+              path: '/spec/template/spec/serverConfig/etcd/backupConfig/s3/etcdS3endpointCASecret'
+              valueFrom:
+                variable: etcdS3endpointCASecret
+            - op: add
+              path: '/spec/template/spec/serverConfig/etcd/backupConfig/s3/enforceSslVerify'
+              valueFrom:
+                variable: etcdS3enforceSslVerify  
+            - op: add
+              path: '/spec/template/spec/serverConfig/etcd/backupConfig/s3/s3CredentialSecret'
+              valueFrom:
+                variable: etcdS3s3CredentialSecret                   
+            - op: add
+              path: '/spec/template/spec/serverConfig/etcd/backupConfig/s3/bucket'
+              valueFrom:
+                variable: etcdS3bucket
+            - op: add
+              path: '/spec/template/spec/serverConfig/etcd/backupConfig/s3/region'
+              valueFrom:
+                variable: etcdS3region 
+            - op: add
+              path: '/spec/template/spec/serverConfig/etcd/backupConfig/s3/folder'
+              valueFrom:
+                variable: etcdS3folder
+
+---                       
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: RKE2ConfigTemplate
+metadata:
+  name: demo-1-rke2-default-worker-bootstrap
+spec:
+  template:
+    spec: 
+      agentConfig: {}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: AzureClusterTemplate
+metadata:
+  name: demo-1-azure-cluster
+spec:
+  template:
+    spec:
+      identityRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: AzureClusterIdentity
+        name: cluster-identity
+      networkSpec:
+        subnets:
+        - name: control-plane-subnet
+          role: control-plane
+        - name: node-subnet
+          role: node
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: RKE2ControlPlaneTemplate
+metadata:
+  name: demo-1-rke2-control-plane
+spec:
+  template:
+    spec:
+      rolloutStrategy:
+        type: "RollingUpdate"
+        rollingUpdate:
+          maxSurge: 1
+      agentConfig: {}
+      serverConfig:
+        cni: none
+        cloudProviderName: external
+        disableComponents:
+          kubernetesComponents:
+          - cloudController
+        kubeAPIServer:
+          extraArgs:
+          - --anonymous-auth=true
+      files:
+        - owner: root:root
+          path: /etc/kubernetes/azure.json
+          permissions: "0644"
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: AzureMachineTemplate
+metadata:
+  name: demo-1-rke2-control-plane
+spec:
+  template:
+    spec:
+      image:
+        computeGallery: 
+          gallery: "TO_BE_REPLACED_BY_PATCH"
+          name: "TO_BE_REPLACED_BY_PATCH"
+          version: "TO_BE_REPLACED_BY_PATCH"
+      osDisk:
+        diskSizeGB: 128
+        osType: Linux
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: AzureMachineTemplate
+metadata:
+  name: demo-1-rke2-default-worker
+spec:
+  template:
+    spec:
+      image:
+        computeGallery: 
+          gallery: "TO_BE_REPLACED_BY_PATCH"
+          name: "TO_BE_REPLACED_BY_PATCH"
+          version: "TO_BE_REPLACED_BY_PATCH"
+      osDisk:
+        diskSizeGB: 30
+        osType: Linux

@@ -1,48 +1,47 @@
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: ClusterClass
 metadata:
-  name: azure-rke2-example
+  name: demo-2-azure-rke2-example
 spec:
   controlPlane:
     ref:
       apiVersion: controlplane.cluster.x-k8s.io/v1beta1
       kind: RKE2ControlPlaneTemplate
-      name: rke2-control-plane
+      name: demo-2-rke2-control-plane
     machineInfrastructure:
       ref:
         kind: AzureMachineTemplate
         apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-        name: rke2-control-plane
+        name: demo-2-rke2-control-plane
   infrastructure:
     ref:
       apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
       kind: AzureClusterTemplate
-      name: azure-cluster
+      name: demo-2-azure-cluster
   workers:
     machineDeployments:
-      - class: rke2-default-worker
+      - class: demo-2-rke2-default-worker
         template:
           bootstrap:
             ref:
               apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
               kind: RKE2ConfigTemplate
-              name: rke2-default-worker-bootstrap
+              name: demo-2-rke2-default-worker-bootstrap
           infrastructure:
             ref:
               apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
               kind: AzureMachineTemplate
-              name: rke2-default-worker
+              name: demo-2-rke2-default-worker
   variables:
-    - name: subscriptionID
-      required: true
-      schema:
-        openAPIV3Schema:
-          description: "The Azure Subscription ID where the Cluster will be created."
-          type: string
     - name: location
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "General"
+          turtles-capi.cattle.io/group: "Azure"
       required: true
       schema:
         openAPIV3Schema:
+          default: northeurope
           description: "The Azure location where the Cluster will be created."
           type: string
           enum:
@@ -55,54 +54,36 @@ spec:
             - uksouth
             - westeurope
             - westus2
-    - name: resourceGroup
+    - name: azureClusterIdentity
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "General"
+          turtles-capi.cattle.io/group: "Azure"
+          turtles-capi.cattle.io/type: "infrastructure.cluster.x-k8s.io.azureclusteridentity"
+          turtles-capi.cattle.io/highlight: "warning"
       required: true
       schema:
         openAPIV3Schema:
-          description: "The Azure Resource Group where the Cluster will be created."
-          type: string
-    - name: azureClusterIdentityName
-      required: true
-      schema:
-        openAPIV3Schema:
-          description: "The AzureClusterIdentity resource name referencing the credentials to create the Cluster."
-          type: string
-          default: "cluster-identity"
-    - name: imageGallery
-      required: true
-      schema:
-        openAPIV3Schema:
-          description: "The image Public gallery name."
-          type: string
-          default: "ClusterAPI-f72ceb4f-5159-4c26-a0fe-2ea738f0d019"
-    - name: imageName
-      required: true
-      schema:
-        openAPIV3Schema:
-          description: "The image name"
-          type: string
-          default: "capi-ubun2-2404"          
+          type: object
+          description: "The AzureClusterIdentity is a resource that references credentials used to create the cluster. If the cluster identity has allowedNamespaces defined, the cluster identity may only be those namespaces. If undefined, clusters in any namespace may use the cluster identity" 
+          default:
+            name: "cluster-identity"
+            namespace: "default"
+          properties:
+            name: 
+              type: string
+            namespace: 
+              type: string         
     - name: vmSize
       required: true
+      metadata:
+        annotations:
+          turtles-capi.cattle.io/section: "Workers"
       schema:
         openAPIV3Schema:
           description: "The VM size used by machines."
           type: string
           default: "Standard_D2s_v3"
-    - name: registrationMethod
-      required: true
-      schema:
-        openAPIV3Schema:
-          description: "Registration method to use. Defaults to control-plane endpoint (empty string). Immutable once is set."
-          type: string
-          default: ""
-          enum:
-            - internal-first
-            - internal-only-ips
-            - external-only-ips
-            - address
-            - control-plane-endpoint
-            - ""
   patches:
     - name: azureClusterTemplate
       definitions:
@@ -115,7 +96,7 @@ spec:
             - op: add
               path: "/spec/template/spec/subscriptionID"
               valueFrom:
-                variable: subscriptionID
+                template: "SUBSCRIPTION_ID_HERE"
             - op: add
               path: "/spec/template/spec/location"
               valueFrom:
@@ -123,11 +104,12 @@ spec:
             - op: add
               path: "/spec/template/spec/resourceGroup"
               valueFrom:
-                variable: resourceGroup
+                template: '{{ .builtin.cluster.name }}-resource-group'
             - op: add
               path: "/spec/template/spec/identityRef/name"
               valueFrom:
-                variable: azureClusterIdentityName
+                template: "{{ .azureClusterIdentity.name }}"
+                # variable: azureClusterIdentityName
             - op: add
               path: "/spec/template/spec/networkSpec"
               valueFrom:
@@ -163,7 +145,7 @@ spec:
             - op: add
               path: /spec/template/spec/registrationMethod
               valueFrom:
-                variable: registrationMethod
+                template: "control-plane-endpoint"
         - selector:
             apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: AzureMachineTemplate
@@ -171,16 +153,16 @@ spec:
               controlPlane: true
               machineDeploymentClass:
                 names:
-                  - rke2-default-worker
+                  - demo-2-rke2-default-worker
           jsonPatches:
             - op: add
               path: "/spec/template/spec/image/computeGallery/gallery"
               valueFrom:
-                variable: imageGallery
+                template: "ClusterAPI-f72ceb4f-5159-4c26-a0fe-2ea738f0d019"
             - op: add
               path: "/spec/template/spec/image/computeGallery/name"
               valueFrom:
-                variable: imageName
+                template: "capi-ubun2-2404"
             - op: replace
               path: /spec/template/spec/image/computeGallery/version
               valueFrom:
@@ -193,7 +175,7 @@ spec:
 apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
 kind: RKE2ConfigTemplate
 metadata:
-  name: rke2-default-worker-bootstrap
+  name: demo-2-rke2-default-worker-bootstrap
 spec:
   template:
     spec: {}
@@ -201,7 +183,7 @@ spec:
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: AzureClusterTemplate
 metadata:
-  name: azure-cluster
+  name: demo-2-azure-cluster
 spec:
   template:
     spec:
@@ -219,7 +201,7 @@ spec:
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: RKE2ControlPlaneTemplate
 metadata:
-  name: rke2-control-plane
+  name: demo-2-rke2-control-plane
 spec:
   template:
     spec:
@@ -245,7 +227,7 @@ spec:
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: AzureMachineTemplate
 metadata:
-  name: rke2-control-plane
+  name: demo-2-rke2-control-plane
 spec:
   template:
     spec:
@@ -261,7 +243,7 @@ spec:
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: AzureMachineTemplate
 metadata:
-  name: rke2-default-worker
+  name: demo-2-rke2-default-worker
 spec:
   template:
     spec:
