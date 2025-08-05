@@ -50,3 +50,7 @@ spec:
           - vsphere-kubeadm-example
           - vsphere-rke2-example
           - gcp-kubeadm-example
+          - demo-0-azure-rke2-example
+          - demo-1-azure-rke2-example
+          - demo-2-azure-rke2-example
+
